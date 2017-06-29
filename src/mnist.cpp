@@ -2,17 +2,14 @@
 #include "caffe2/core/operator_gradient.h"
 #include "caffe2/core/operator.h"
 
-#ifdef WITH_CUDA
-  #include "caffe2/core/context_gpu.h"
-#endif
-
 #include "util/print.h"
+#include "util/cuda.h"
 
 CAFFE2_DEFINE_string(train_db, "res/mnist-train-nchw-leveldb", "The given path to the training leveldb.");
 CAFFE2_DEFINE_string(test_db, "res/mnist-test-nchw-leveldb", "The given path to the testing leveldb.");
 CAFFE2_DEFINE_int(train_runs, 200, "The of training runs.");
 CAFFE2_DEFINE_int(test_runs, 100, "The of test runs.");
-CAFFE2_DEFINE_bool(use_cudnn, true, "Train on gpu.");
+CAFFE2_DEFINE_bool(use_cudnn, false, "Train on gpu.");
 
 namespace caffe2 {
 
@@ -473,15 +470,7 @@ void run() {
   std::cout << "test_runs: " << FLAGS_test_runs << std::endl;
   std::cout << "use_cudnn: " << FLAGS_use_cudnn << std::endl;
 
-  if (FLAGS_use_cudnn) {
-#ifdef WITH_CUDA
-    DeviceOption option;
-    option.set_device_type(CUDA);
-    CUDAContext context(option);
-#else
-    LOG(FATAL) << "use_cudnn set but CUDA not available.";
-#endif
-  }
+  CHECK(!FLAGS_use_cudnn || setupCUDA()) << "~ use_cudnn set but CUDA not available.";
 
   // >>> from caffe2.python import core, cnn, net_drawer, workspace, visualize, brew
   // >>> workspace.ResetWorkspace(root_folder)
@@ -550,6 +539,13 @@ void run() {
   // >>> AddLeNetModel(deploy_model, "data")
   std::vector<OperatorDef *> gradient_ops_deploy;
   AddLeNetModel(initDeployModel, predictDeployModel, gradient_ops_deploy, false);
+
+  if (FLAGS_use_cudnn) {
+    addCUDNN(initTrainModel);
+    addCUDNN(predictTrainModel);
+    addCUDNN(initTestModel);
+    addCUDNN(predictTestModel);
+  }
 
   std::cout << std::endl;
 
