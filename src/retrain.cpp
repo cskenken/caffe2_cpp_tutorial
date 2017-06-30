@@ -16,7 +16,7 @@
 #include <sys/stat.h>
 
 CAFFE2_DEFINE_string(model, "alexnet", "Name of one of the pre-trained models.");
-CAFFE2_DEFINE_string(blob_name, "fc6", "Name of the blob on which to split the model.");
+CAFFE2_DEFINE_string(blob_name, "pool5", "Name of the blob on which to split the model.");
 CAFFE2_DEFINE_string(image_dir, "retrain", "Folder with subfolders with images");
 CAFFE2_DEFINE_string(db_type, "leveldb", "The database type.");
 CAFFE2_DEFINE_int(size_to_fit, 224, "The image file.");
@@ -24,7 +24,7 @@ CAFFE2_DEFINE_int(image_mean, 128, "The mean to adjust values to.");
 CAFFE2_DEFINE_int(train_runs, 100, "The of training runs.");
 CAFFE2_DEFINE_int(test_runs, 50, "The of training runs.");
 CAFFE2_DEFINE_int(batch_size, 64, "Training batch size.");
-CAFFE2_DEFINE_double(learning_rate, 0.003, "Learning rate.");
+CAFFE2_DEFINE_double(learning_rate, 0.001, "Learning rate.");
 CAFFE2_DEFINE_double(learning_gamma, 0.999, "Learning gamma.");
 CAFFE2_DEFINE_bool(use_cudnn, false, "Train on gpu.");
 
@@ -240,6 +240,15 @@ void run() {
     init_model[i].set_name(name_for_run[i] + "_init_model");
     predict_model[i].set_name(name_for_run[i] + "_predict_model");
   }
+  if (FLAGS_use_cudnn) {
+    set_device_cuda_model(full_init_model);
+    set_device_cuda_model(full_predict_model);
+    set_device_cuda_model(pre_predict_model);
+    for (int i = 0; i < kRunNum; i++) {
+      set_device_cuda_model(init_model[i]);
+      set_device_cuda_model(predict_model[i]);
+    }
+  }
   std::string init_filename = "res/" + FLAGS_model + "_init_net.pb";
   std::string predict_filename = "res/" + FLAGS_model + "_predict_net.pb";
   CHECK(ReadProtoFromFile(init_filename.c_str(), &full_init_model)) << "~ empty init model " << init_filename;
@@ -255,7 +264,10 @@ void run() {
   bool in_static = true;
   std::set<std::string> static_inputs;
   std::string last_w, last_b;
+  std::vector<std::string> available_blobs;
+  std::set<std::string> strip_op_types({ "Dropout" });
   for (const auto &op: full_predict_model.op()) {
+    available_blobs.push_back(op.input(0));
     if (op.input(0) == FLAGS_blob_name && op.output(0) != FLAGS_blob_name) {
       in_static = false;
     }
@@ -269,7 +281,7 @@ void run() {
         static_inputs.insert(input);
       }
     } else {
-      auto train_only = (op.type() == "Dropout");
+      auto train_only = (strip_op_types.find(op.type()) != strip_op_types.end());
       for (int i = 0; i < (train_only ? 1 : kRunNum); i++) {
         auto new_op = predict_model[i].add_op();
         new_op->CopyFrom(op);
@@ -282,6 +294,14 @@ void run() {
         last_b = op.input(2);
       }
     }
+  }
+  if (std::find(available_blobs.begin(), available_blobs.end(), FLAGS_blob_name) == available_blobs.end()) {
+    std::cout << "available blobs:" << std::endl;
+    available_blobs.erase(std::unique(available_blobs.begin(), available_blobs.end()), available_blobs.end());
+    for (auto &blob: available_blobs) {
+      std::cout << "  " << blob << std::endl;
+    }
+    LOG(FATAL) << "~ no blob with name " << FLAGS_blob_name << " in model.";
   }
   for (const auto &op: full_init_model.op()) {
     auto &output = op.output(0);
@@ -330,13 +350,6 @@ void run() {
   add_train_ops(init_model[kRunTrain], predict_model[kRunTrain], FLAGS_learning_rate, FLAGS_learning_gamma);
   add_test_ops(predict_model[kRunValidate]);
   add_test_ops(predict_model[kRunTest]);
-
-  if (FLAGS_use_cudnn) {
-    for (int i = 0; i < kRunNum; i++) {
-      set_device_cuda_model(init_model[i]);
-      set_device_cuda_model(predict_model[i]);
-    }
-  }
 
   // std::cout << "full_init_model -------------" << std::endl;
   // print(full_init_model);
