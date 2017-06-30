@@ -248,7 +248,7 @@ void run() {
   pre_predict_model.set_name("pre_predict_model");
 
   for (int i = 0; i < kRunNum; i++) {
-    add_database_ops(init_model[i], predict_model[i], name_for_run[i], FLAGS_blob_name, db_paths[i], FLAGS_db_type, FLAGS_batch_size);
+    add_database_ops(init_model[i], predict_model[i], name_for_run[i], FLAGS_blob_name, db_paths[i], FLAGS_db_type, FLAGS_batch_size, FLAGS_use_cudnn);
   }
 
   std::cout << "split model.." << std::endl;
@@ -260,15 +260,15 @@ void run() {
       in_static = false;
     }
     if (in_static) {
-      pre_predict_model.add_op()->CopyFrom(op);
+      copy_op(op, *pre_predict_model.add_op(), FLAGS_use_cudnn);
       for (const auto &input: op.input()) {
         static_inputs.insert(input);
       }
     } else {
-      predict_model[kRunTrain].add_op()->CopyFrom(op);
+      copy_op(op, *predict_model[kRunTrain].add_op(), FLAGS_use_cudnn);
       if (op.type() != "Dropout") {
-        predict_model[kRunValidate].add_op()->CopyFrom(op);
-        predict_model[kRunTest].add_op()->CopyFrom(op);
+        copy_op(op, *predict_model[kRunValidate].add_op(), FLAGS_use_cudnn);
+        copy_op(op, *predict_model[kRunTest].add_op(), FLAGS_use_cudnn);
       }
       if (op.type() == "FC") {
         last_w = op.input(1);
@@ -297,6 +297,7 @@ void run() {
         }
       }
       init_op->add_output(output);
+      cudnn_op(*init_op, FLAGS_use_cudnn);
     }
   }
   auto op = init_model[kRunTrain].add_op();
@@ -305,6 +306,7 @@ void run() {
   arg->set_name("shape");
   arg->add_ints(1);
   op->add_output(FLAGS_blob_name);
+  cudnn_op(*op, FLAGS_use_cudnn);
   for (const auto &input: full_predict_model.external_input()) {
     if (static_inputs.find(input) != static_inputs.end()) {
       pre_predict_model.add_external_input(input);
@@ -320,7 +322,7 @@ void run() {
       predict_model[i].add_external_output(output);
     }
   }
-  add_train_ops(init_model[kRunTrain], predict_model[kRunTrain], FLAGS_learning_rate, FLAGS_learning_gamma);
+  add_train_ops(init_model[kRunTrain], predict_model[kRunTrain], FLAGS_learning_rate, FLAGS_learning_gamma, FLAGS_use_cudnn);
   add_test_ops(predict_model[kRunValidate]);
   add_test_ops(predict_model[kRunTest]);
 

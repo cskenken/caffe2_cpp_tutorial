@@ -21,11 +21,9 @@ bool setupCUDA() {
 void addCUDNN(NetDef &model) {
   DeviceOption option;
   option.set_device_type(CUDA);
+#ifdef WITH_CUDA
   *model.mutable_device_option() = option;
-  for (auto op: model.op()) {
-      op.set_engine("CUDNN");
-      op.mutable_device_option()->set_device_type(CUDA);
-  }
+#endif
 }
 
 }  // namespace caffe2

@@ -40,6 +40,9 @@ void print(const OperatorDef &def) {
       std::cout << "  }" << std::endl;
     }
   }
+  if (def.engine() != "") {
+    std::cout << "  engine: " << def.engine() << std::endl;
+  }
   if (def.is_gradient_op()) {
     std::cout << "  is_gradient_op: true" << std::endl;
   }
