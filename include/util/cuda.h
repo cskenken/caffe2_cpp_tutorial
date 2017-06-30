@@ -18,14 +18,19 @@ bool setupCUDA() {
 #endif
 }
 
-void addCUDNN(NetDef &model) {
-  DeviceOption option;
-  option.set_device_type(CUDA);
-  *model.mutable_device_option() = option;
-  for (auto op: model.op()) {
-      op.set_engine("CUDNN");
-      op.mutable_device_option()->set_device_type(CUDA);
+void set_device_cuda_model(NetDef &model) {
+#ifdef WITH_CUDA
+  model.mutable_device_option()->set_device_type(CUDA);
+#endif
+}
+
+TensorCPU get_tensor_blob(const Blob &blob) {
+#ifdef WITH_CUDA
+  if (blob.IsType<TensorCUDA>()) {
+    return TensorCPU(blob.Get<TensorCUDA>());
   }
+#endif
+  return blob.Get<TensorCPU>();
 }
 
 }  // namespace caffe2

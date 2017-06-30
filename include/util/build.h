@@ -161,6 +161,14 @@ OperatorDef *add_learning_rate_op(NetDef &model, const std::string &iter, const 
 
 // Helpers
 
+void set_device_cpu_op(OperatorDef &op) {
+  op.mutable_device_option()->set_device_type(CPU);
+}
+
+void set_engine_cudnn_op(OperatorDef &op) {
+  op.set_engine("CUDNN");
+}
+
 OperatorDef *add_gradient_op(NetDef &model, const OperatorDef *op) {
   vector<GradientWrapper> output(op->output_size());
   for (auto i = 0; i < output.size(); i++) {

@@ -260,15 +260,22 @@ void run() {
       in_static = false;
     }
     if (in_static) {
-      pre_predict_model.add_op()->CopyFrom(op);
+      auto new_op = pre_predict_model.add_op();
+      new_op->CopyFrom(op);
+      if (FLAGS_use_cudnn) {
+        set_engine_cudnn_op(*new_op);
+      }
       for (const auto &input: op.input()) {
         static_inputs.insert(input);
       }
     } else {
-      predict_model[kRunTrain].add_op()->CopyFrom(op);
-      if (op.type() != "Dropout") {
-        predict_model[kRunValidate].add_op()->CopyFrom(op);
-        predict_model[kRunTest].add_op()->CopyFrom(op);
+      auto train_only = (op.type() == "Dropout");
+      for (int i = 0; i < (train_only ? 1 : kRunNum); i++) {
+        auto new_op = predict_model[i].add_op();
+        new_op->CopyFrom(op);
+        if (FLAGS_use_cudnn) {
+          set_engine_cudnn_op(*new_op);
+        }
       }
       if (op.type() == "FC") {
         last_w = op.input(1);
@@ -367,15 +374,15 @@ void run() {
     train_time += clock();
 
     if (i % 10 == 0) {
-      auto iter = workspace.GetBlob("iter")->Get<TensorCPU>().data<int64_t>()[0];
-      auto lr = workspace.GetBlob("LR")->Get<TensorCPU>().data<float>()[0];
-      auto train_accuracy = workspace.GetBlob("accuracy")->Get<TensorCPU>().data<float>()[0];
-      auto train_loss = workspace.GetBlob("loss")->Get<TensorCPU>().data<float>()[0];
+      auto iter = get_tensor_blob(*workspace.GetBlob("iter")).data<int64_t>()[0];
+      auto lr = get_tensor_blob(*workspace.GetBlob("LR")).data<float>()[0];
+      auto train_accuracy = get_tensor_blob(*workspace.GetBlob("accuracy")).data<float>()[0];
+      auto train_loss = get_tensor_blob(*workspace.GetBlob("loss")).data<float>()[0];
       validate_time -= clock();
       predict_net[kRunValidate]->Run();
       validate_time += clock();
-      auto validate_accuracy = workspace.GetBlob("accuracy")->Get<TensorCPU>().data<float>()[0];
-      auto validate_loss = workspace.GetBlob("loss")->Get<TensorCPU>().data<float>()[0];
+      auto validate_accuracy = get_tensor_blob(*workspace.GetBlob("accuracy")).data<float>()[0];
+      auto validate_loss = get_tensor_blob(*workspace.GetBlob("loss")).data<float>()[0];
       std::cout << "step: " << iter << "  rate: " << lr << "  loss: " << train_loss << " | " << validate_loss << "  accuracy: " << train_accuracy << " | " << validate_accuracy << std::endl;
     }
   }
@@ -389,8 +396,8 @@ void run() {
     test_time += clock();
 
     if (i % 10 == 0) {
-      auto accuracy = workspace.GetBlob("accuracy")->Get<TensorCPU>().data<float>()[0];
-      auto loss = workspace.GetBlob("loss")->Get<TensorCPU>().data<float>()[0];
+      auto accuracy = get_tensor_blob(*workspace.GetBlob("accuracy")).data<float>()[0];
+      auto loss = get_tensor_blob(*workspace.GetBlob("loss")).data<float>()[0];
       std::cout << "step: " << i << " loss: " << loss << " accuracy: " << accuracy << std::endl;
     }
   }
@@ -398,7 +405,7 @@ void run() {
   for (const auto &op: full_init_model.op()) {
     auto &output = op.output(0);
     if (static_inputs.find(output) == static_inputs.end()) {
-      auto tensor = workspace.GetBlob(output)->Get<TensorCPU>();
+      auto tensor = get_tensor_blob(*workspace.GetBlob(output));
       auto init_op = deploy_init_model.add_op();
       init_op->set_type("GivenTensorFill");
       auto arg1 = init_op->add_arg();
