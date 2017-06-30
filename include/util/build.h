@@ -161,7 +161,7 @@ OperatorDef *add_learning_rate_op(NetDef &model, const std::string &iter, const 
 
 OperatorDef *add_copy_gpu_to_cpu_op(NetDef &model, const std::string &input, const std::string &output) {
   auto op = model.add_op();
-#ifdef WITH_CUDN
+#ifdef WITH_CUDA
   op->set_type("CopyGPUToCPU");
 #else
   op->set_type("Copy");
@@ -173,7 +173,7 @@ OperatorDef *add_copy_gpu_to_cpu_op(NetDef &model, const std::string &input, con
 
 OperatorDef *add_copy_cpu_to_gpu_op(NetDef &model, const std::string &input, const std::string &output) {
   auto op = model.add_op();
-#ifdef WITH_CUDN
+#ifdef WITH_CUDA
   op->set_type("CopyCPUToGPU");
 #else
   op->set_type("Copy");
@@ -188,7 +188,7 @@ OperatorDef *add_copy_cpu_to_gpu_op(NetDef &model, const std::string &input, con
 void cudnn_op(OperatorDef &op, bool use_cudnn) {
   if (use_cudnn) {
     op.set_engine("CUDNN");
-#ifdef WITH_CUDN
+#ifdef WITH_CUDA
     op.mutable_device_option()->set_device_type(CUDA);
 #endif
   }
